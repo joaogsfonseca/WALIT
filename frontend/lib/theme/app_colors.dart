@@ -108,20 +108,6 @@ class AppColors {
     end: Alignment.bottomRight,
   );
 
-  /// Moonlit Asteroid Gradient (#0F2027 -> #203A43 -> #2C5364)
-  static const LinearGradient moonlitAsteroid = LinearGradient(
-    colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-  );
-
-  /// Argon Gradient (#03001e -> #7303c0 -> #ec38bc)
-  static const LinearGradient argon = LinearGradient(
-    colors: [Color(0xFF03001e), Color(0xFF7303c0), Color(0xFFec38bc)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-  
   // ══════════════════════════════════════════════════════════════════════════
   // BORDERS
   // ══════════════════════════════════════════════════════════════════════════

@@ -232,7 +232,7 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -240,13 +240,13 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
           icon: Container(
             padding: const EdgeInsets.all(AppTheme.spacingS),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.close_rounded,
               size: 18,
-              color: AppColors.textPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           onPressed: () => context.pop(),
@@ -309,7 +309,7 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
               decoration: BoxDecoration(
                 color: _currentStep > stepIndex
                     ? AppColors.gold
-                    : AppColors.grey800,
+                    : Theme.of(context).dividerColor,
                 borderRadius: BorderRadius.circular(1),
               ),
             ),
@@ -326,9 +326,9 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
             height: isCurrent ? 32 : 24,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isActive ? AppColors.gold : AppColors.surface,
+              color: isActive ? AppColors.gold : Theme.of(context).colorScheme.surface,
               border: Border.all(
-                color: isActive ? AppColors.gold : AppColors.grey700,
+                color: isActive ? AppColors.gold : Theme.of(context).dividerColor,
                 width: 2,
               ),
             ),
@@ -397,10 +397,10 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
         decoration: BoxDecoration(
           color: isSelected
               ? (type['color'] as Color).withAlpha(20)
-              : AppColors.surface,
+              : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
           border: Border.all(
-            color: isSelected ? type['color'] : AppColors.grey800,
+            color: isSelected ? type['color'] : Theme.of(context).dividerColor,
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -428,7 +428,7 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
                     style: GoogleFonts.outfit(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: AppTheme.spacingXS),
@@ -523,10 +523,10 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
                 decoration: BoxDecoration(
                   color: isSelected
                       ? AppColors.gold.withAlpha(20)
-                      : AppColors.surface,
+                      : Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
                   border: Border.all(
-                    color: isSelected ? AppColors.gold : AppColors.grey800,
+                    color: isSelected ? AppColors.gold : Theme.of(context).dividerColor,
                     width: isSelected ? 2 : 1,
                   ),
                 ),
@@ -546,7 +546,7 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
                       currency['code']!,
                       style: GoogleFonts.outfit(
                         fontSize: 14,
-                        color: isSelected ? AppColors.gold : AppColors.textPrimary,
+                        color: isSelected ? AppColors.gold : Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                   ],
@@ -618,16 +618,16 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
           Container(
             padding: const EdgeInsets.all(AppTheme.spacingL),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-              border: Border.all(color: AppColors.grey800),
+              border: Border.all(color: Theme.of(context).dividerColor),
             ),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(AppTheme.spacingS),
                   decoration: BoxDecoration(
-                    color: AppColors.grey800,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
                   ),
                   child: const Icon(
@@ -659,9 +659,9 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
         vertical: AppTheme.spacingS,
       ),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-        border: Border.all(color: AppColors.grey800),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Row(
         children: [
@@ -683,7 +683,7 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
               email,
               style: GoogleFonts.outfit(
                 fontSize: 14,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ),

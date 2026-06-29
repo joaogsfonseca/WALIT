@@ -124,7 +124,7 @@ class _CustomTextFieldState extends State<CustomTextField>
           autofocus: widget.autofocus,
           focusNode: _focusNode,
           style: GoogleFonts.outfit(
-            color: AppColors.textPrimary,
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 16,
           ),
           cursorColor: AppColors.gold,
@@ -161,7 +161,7 @@ class _CustomTextFieldState extends State<CustomTextField>
                   )
                 : null,
             filled: true,
-            fillColor: AppColors.surface,
+            fillColor: Theme.of(context).colorScheme.surface,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: AppTheme.spacingM,
               vertical: AppTheme.spacingM,

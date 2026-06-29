@@ -601,7 +601,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -656,7 +656,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       title: Text(
         name,
         style: GoogleFonts.outfit(
-          color: isSelected ? AppColors.gold : AppColors.textPrimary,
+          color: isSelected ? AppColors.gold : Theme.of(context).colorScheme.onSurface,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
