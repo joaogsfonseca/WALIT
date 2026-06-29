@@ -44,7 +44,6 @@ class AppTheme {
   static TextStyle get h1 => GoogleFonts.outfit(
     fontSize: 32,
     fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
     height: 1.2,
   );
   
@@ -52,7 +51,6 @@ class AppTheme {
   static TextStyle get h2 => GoogleFonts.outfit(
     fontSize: 24,
     fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
     height: 1.3,
   );
   
@@ -60,7 +58,6 @@ class AppTheme {
   static TextStyle get h3 => GoogleFonts.outfit(
     fontSize: 20,
     fontWeight: FontWeight.w600,
-    color: AppColors.textPrimary,
     height: 1.4,
   );
   
@@ -68,7 +65,6 @@ class AppTheme {
   static TextStyle get bodyLarge => GoogleFonts.outfit(
     fontSize: 18,
     fontWeight: FontWeight.normal,
-    color: AppColors.textPrimary,
     height: 1.5,
   );
   
@@ -76,7 +72,6 @@ class AppTheme {
   static TextStyle get bodyMedium => GoogleFonts.outfit(
     fontSize: 16,
     fontWeight: FontWeight.normal,
-    color: AppColors.textPrimary,
     height: 1.5,
   );
   
@@ -100,7 +95,6 @@ class AppTheme {
   static TextStyle get button => GoogleFonts.outfit(
     fontSize: 16,
     fontWeight: FontWeight.w600,
-    color: AppColors.textPrimary,
     height: 1.0,
   );
   

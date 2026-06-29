@@ -483,30 +483,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ),
                       const SizedBox(height: AppTheme.spacingM),
                       _buildThemeOption(
-                        context, 
-                        title: 'Dark (Default)', 
-                        theme: AppThemeType.dark, 
+                        context,
+                        title: 'Dark (Default)',
+                        theme: AppThemeType.dark,
                         currentTheme: themeProvider.currentTheme,
                         icon: Icons.nightlight_round,
                         color: Colors.purple.shade200,
-                      ),
-                      const SizedBox(height: AppTheme.spacingM),
-                      _buildThemeOption(
-                        context, 
-                        title: 'Moonlit Asteroid', 
-                        theme: AppThemeType.moonlitAsteroid, 
-                        currentTheme: themeProvider.currentTheme,
-                        icon: Icons.blur_linear_rounded,
-                        color: const Color(0xFF2C5364),
-                      ),
-                      const SizedBox(height: AppTheme.spacingM),
-                      _buildThemeOption(
-                        context, 
-                        title: 'Argon', 
-                        theme: AppThemeType.argon, 
-                        currentTheme: themeProvider.currentTheme,
-                        icon: Icons.gradient_rounded,
-                        color: const Color(0xFFec38bc),
                       ),
                       const SizedBox(height: AppTheme.spacingXL),
                     ],
@@ -533,15 +515,17 @@ class _ProfileScreenState extends State<ProfileScreen>
       onTap: () {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
         Provider.of<ThemeProvider>(context, listen: false).setTheme(
-          theme, 
-          token: authProvider.token
+          theme,
+          token: authProvider.token,
         );
         Navigator.pop(context);
       },
       child: Container(
         padding: const EdgeInsets.all(AppTheme.spacingM),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.gold.withAlpha(25) : AppColors.grey800.withAlpha(50),
+          color: isSelected
+              ? AppColors.gold.withAlpha(25)
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
           border: Border.all(
             color: isSelected ? AppColors.gold : Colors.transparent,
@@ -551,10 +535,15 @@ class _ProfileScreenState extends State<ProfileScreen>
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: color.withAlpha(50),
                 shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).dividerColor,
+                  width: 1,
+                ),
               ),
               child: Icon(icon, color: color, size: 20),
             ),
@@ -563,7 +552,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               title,
               style: AppTheme.bodyMedium.copyWith(
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const Spacer(),
