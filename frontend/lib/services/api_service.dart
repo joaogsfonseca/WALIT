@@ -121,6 +121,35 @@ class ApiService {
     return _handleResponse(response);
   }
 
+  static Future<void> deleteWallet(String token, String walletId) async {
+    final response = await http.delete(
+      Uri.parse('$walletUrl/$walletId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    // 204 No Content on success — no body to parse.
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final error = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+      throw Exception(error['error'] ?? 'Failed to delete wallet');
+    }
+  }
+
+  static Future<void> leaveWallet(String token, String walletId) async {
+    final response = await http.post(
+      Uri.parse('$walletUrl/$walletId/leave'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final error = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+      throw Exception(error['error'] ?? 'Failed to leave wallet');
+    }
+  }
+
   static Future<Map<String, dynamic>> inviteUser(String token, String walletId, String email) async {
     final response = await http.post(
       Uri.parse('$walletUrl/$walletId/invite'),

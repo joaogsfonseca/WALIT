@@ -801,6 +801,238 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildWalletsContent() {
+    if (_isLoadingWallets) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.gold),
+      );
+    }
+
+    if (_wallets.isEmpty) {
+      return _buildWalletsEmptyState();
+    }
+
+    return RefreshIndicator(
+      color: AppColors.gold,
+      onRefresh: _loadWallets,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppTheme.spacingL),
+        itemCount: _wallets.length,
+        separatorBuilder: (_, __) => const SizedBox(height: AppTheme.spacingM),
+        itemBuilder: (context, index) => _buildWalletCard(_wallets[index]),
+      ),
+    );
+  }
+
+  Widget _buildWalletCard(dynamic wallet) {
+    final String name = wallet['name'] ?? 'Unnamed Wallet';
+    final String currency = wallet['currency'] ?? '';
+    final String type = wallet['type'] ?? '';
+    final bool isGroup = type.toUpperCase() == 'GROUP';
+    final int memberCount = wallet['_count']?['members'] ?? 0;
+
+    final currentUserId = Provider.of<AuthProvider>(context, listen: false).user?['id'];
+    final bool isOwner = wallet['owner_id'] != null && wallet['owner_id'] == currentUserId;
+
+    return Container(
+      padding: const EdgeInsets.all(AppTheme.spacingM),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(AppTheme.spacingM),
+            decoration: BoxDecoration(
+              color: AppColors.gold.withAlpha(30),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+            ),
+            child: Icon(
+              isGroup ? Icons.groups_rounded : Icons.account_balance_wallet_rounded,
+              color: AppColors.gold,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: AppTheme.spacingM),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: GoogleFonts.outfit(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isGroup
+                      ? 'Group · $memberCount ${memberCount == 1 ? 'member' : 'members'}'
+                      : 'Personal',
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.spacingS,
+              vertical: AppTheme.spacingXS,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(AppTheme.radiusRound),
+            ),
+            child: Text(
+              currency,
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          _buildWalletMenu(wallet, isOwner),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalletMenu(dynamic wallet, bool isOwner) {
+    return PopupMenuButton<String>(
+      icon: Icon(
+        Icons.more_vert_rounded,
+        color: Theme.of(context).textTheme.bodySmall?.color,
+      ),
+      color: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      ),
+      onSelected: (value) {
+        if (value == 'delete') {
+          _confirmDeleteWallet(wallet);
+        } else if (value == 'leave') {
+          _confirmLeaveWallet(wallet);
+        }
+      },
+      itemBuilder: (context) => [
+        if (isOwner)
+          PopupMenuItem<String>(
+            value: 'delete',
+            child: Row(
+              children: [
+                const Icon(Icons.delete_outline_rounded,
+                    color: AppColors.error, size: 20),
+                const SizedBox(width: AppTheme.spacingS),
+                Text('Delete',
+                    style: GoogleFonts.outfit(color: AppColors.error)),
+              ],
+            ),
+          )
+        else
+          PopupMenuItem<String>(
+            value: 'leave',
+            child: Row(
+              children: [
+                const Icon(Icons.logout_rounded,
+                    color: AppColors.error, size: 20),
+                const SizedBox(width: AppTheme.spacingS),
+                Text('Leave',
+                    style: GoogleFonts.outfit(color: AppColors.error)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDeleteWallet(dynamic wallet) async {
+    final token = Provider.of<AuthProvider>(context, listen: false).token;
+    final confirmed = await _showConfirmDialog(
+      title: 'Delete wallet?',
+      message:
+          '"${wallet['name']}" and all of its data will be permanently deleted. This cannot be undone.',
+      confirmLabel: 'Delete',
+    );
+    if (confirmed != true || token == null) return;
+
+    await _runWalletAction(
+      () => ApiService.deleteWallet(token, wallet['id'].toString()),
+      'Wallet deleted',
+    );
+  }
+
+  Future<void> _confirmLeaveWallet(dynamic wallet) async {
+    final token = Provider.of<AuthProvider>(context, listen: false).token;
+    final confirmed = await _showConfirmDialog(
+      title: 'Leave wallet?',
+      message: 'You will lose access to "${wallet['name']}".',
+      confirmLabel: 'Leave',
+    );
+    if (confirmed != true || token == null) return;
+
+    await _runWalletAction(
+      () => ApiService.leaveWallet(token, wallet['id'].toString()),
+      'Left wallet',
+    );
+  }
+
+  Future<bool?> _showConfirmDialog({
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Text(title, style: AppTheme.h3),
+        content: Text(message, style: AppTheme.bodySmall),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(confirmLabel,
+                style: GoogleFonts.outfit(
+                    color: AppColors.error, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runWalletAction(
+      Future<void> Function() action, String successMessage) async {
+    try {
+      await action();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(successMessage)),
+      );
+      _loadWallets();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
+  Widget _buildWalletsEmptyState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
