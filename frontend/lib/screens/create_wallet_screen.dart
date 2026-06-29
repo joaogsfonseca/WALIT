@@ -148,7 +148,7 @@ class _CreateWalletScreenState extends State<CreateWalletScreen>
 
       // If group wallet and we have emails to invite
       if (_selectedType == 'GROUP' && _inviteEmails.isNotEmpty) {
-        final walletId = wallet['id'] as int;
+        final walletId = wallet['id'] as String;
         for (final email in _inviteEmails) {
           try {
             await ApiService.inviteUser(token, walletId, email);

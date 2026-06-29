@@ -1,7 +1,23 @@
-const { PrismaClient } = require("@prisma/client");
 const crypto = require("crypto");
+const prisma = require("../lib/prisma");
 const { sendInvitationEmail } = require("../services/emailService");
-const prisma = new PrismaClient();
+
+const MAX_WALLET_MEMBERS = 5;
+
+// Premium só conta se estiver ativo E ainda não tiver expirado.
+const isPremiumActive = (user) => {
+    if (!user || !user.premium_active) return false;
+    if (!user.premium_until) return true;
+    return new Date(user.premium_until) >= new Date();
+};
+
+// Erro com código HTTP para usar dentro de transações.
+class HttpError extends Error {
+    constructor(statusCode, message) {
+        super(message);
+        this.statusCode = statusCode;
+    }
+}
 
 const createWallet = async (req, res) => {
     try {
@@ -12,36 +28,38 @@ const createWallet = async (req, res) => {
             return res.status(400).json({ error: "Missing required fields" });
         }
 
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        const walletCount = await prisma.walletMember.count({
-            where: { user_id: userId }
-        });
+        // Verificação de limite + criação atómicas para evitar race condition (TOCTOU).
+        const wallet = await prisma.$transaction(async (tx) => {
+            const user = await tx.user.findUnique({ where: { id: userId } });
+            const walletCount = await tx.walletMember.count({ where: { user_id: userId } });
 
-        const limit = user.premium_active ? 10 : 2;
-        if (walletCount >= limit) {
-            return res.status(403).json({ error: `User limit reached. You can only have/join ${limit} wallets.` });
-        }
+            const limit = isPremiumActive(user) ? 10 : 2;
+            if (walletCount >= limit) {
+                throw new HttpError(403, `User limit reached. You can only have/join ${limit} wallets.`);
+            }
 
-        const wallet = await prisma.wallet.create({
-            data: {
-                name,
-                type,
-                currency,
-                owner_id: userId,
-                members: {
-                    create: {
-                        user_id: userId,
-                        role: "OWNER",
+            return tx.wallet.create({
+                data: {
+                    name,
+                    type,
+                    currency,
+                    owner_id: userId,
+                    members: {
+                        create: {
+                            user_id: userId,
+                            role: "OWNER",
+                        },
                     },
                 },
-            },
-            include: {
-                members: true,
-            },
+                include: { members: true },
+            });
         });
 
         res.status(201).json(wallet);
     } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
         console.error("Error creating wallet:", error);
         res.status(500).json({ error: "Internal server error" });
     }
@@ -67,18 +85,18 @@ const getMyWallets = async (req, res) => {
                                 id: true,
                                 name: true,
                                 email: true,
-                                profile_image_url: true
-                            }
-                        }
-                    }
+                                profile_image_url: true,
+                            },
+                        },
+                    },
                 },
                 _count: {
-                    select: { members: true }
-                }
+                    select: { members: true },
+                },
             },
             orderBy: {
-                created_at: 'desc'
-            }
+                created_at: "desc",
+            },
         });
 
         res.json(wallets);
@@ -103,15 +121,23 @@ const getWallet = async (req, res) => {
                                 id: true,
                                 name: true,
                                 email: true,
-                                profile_image_url: true
-                            }
-                        }
-                    }
+                                profile_image_url: true,
+                            },
+                        },
+                    },
                 },
-                invitations: true,
+                // Não incluímos o token do convite — apenas metadados seguros.
+                invitations: {
+                    select: {
+                        id: true,
+                        email_invited: true,
+                        status: true,
+                        created_at: true,
+                    },
+                },
                 _count: {
-                    select: { members: true }
-                }
+                    select: { members: true },
+                },
             },
         });
 
@@ -120,7 +146,7 @@ const getWallet = async (req, res) => {
         }
 
         // Check if user is a member
-        const isMember = wallet.members.some(member => member.user_id === userId);
+        const isMember = wallet.members.some((member) => member.user_id === userId);
         if (!isMember) {
             return res.status(403).json({ error: "Access denied" });
         }
@@ -189,7 +215,7 @@ const deleteWallet = async (req, res) => {
         console.error("Error deleting wallet:", error);
         res.status(500).json({ error: "Internal server error" });
     }
-}
+};
 
 const inviteUser = async (req, res) => {
     try {
@@ -203,25 +229,25 @@ const inviteUser = async (req, res) => {
 
         const wallet = await prisma.wallet.findUnique({
             where: { id },
-            include: { members: true }
+            include: { members: true },
         });
 
         if (!wallet) {
             return res.status(404).json({ error: "Wallet not found" });
         }
 
-        const isMember = wallet.members.some(m => m.user_id === inviterId);
+        const isMember = wallet.members.some((m) => m.user_id === inviterId);
         if (!isMember) {
             return res.status(403).json({ error: "Access denied" });
         }
 
-        if (wallet.members.length >= 5) {
-            return res.status(400).json({ error: "Wallet has reached the maximum limit of 5 members" });
+        if (wallet.members.length >= MAX_WALLET_MEMBERS) {
+            return res.status(400).json({ error: `Wallet has reached the maximum limit of ${MAX_WALLET_MEMBERS} members` });
         }
 
         const userToInvite = await prisma.user.findUnique({ where: { email } });
         if (userToInvite) {
-            const alreadyMember = wallet.members.some(m => m.user_id === userToInvite.id);
+            const alreadyMember = wallet.members.some((m) => m.user_id === userToInvite.id);
             if (alreadyMember) {
                 return res.status(400).json({ error: "User is already a member" });
             }
@@ -231,8 +257,8 @@ const inviteUser = async (req, res) => {
             where: {
                 wallet_id: id,
                 email_invited: email,
-                status: "PENDING"
-            }
+                status: "PENDING",
+            },
         });
 
         if (existingInvite) {
@@ -247,19 +273,14 @@ const inviteUser = async (req, res) => {
                 email_invited: email,
                 invited_by: inviterId,
                 token,
-                status: "PENDING"
-            }
+                status: "PENDING",
+            },
         });
 
         const inviter = await prisma.user.findUnique({ where: { id: inviterId } });
         await sendInvitationEmail(email, token, inviter.name || inviter.email, wallet.name);
 
-        if (!process.env.SMTP_HOST) {
-            return res.json({ message: "Invitation sent", token });
-        }
-
         res.json({ message: "Invitation sent" });
-
     } catch (error) {
         console.error("Error inviting user:", error);
         res.status(500).json({ error: "Internal server error" });
@@ -275,48 +296,52 @@ const acceptInvitation = async (req, res) => {
             return res.status(400).json({ error: "Token is required" });
         }
 
-        const invitation = await prisma.invitation.findUnique({
-            where: { token },
-            include: { wallet: { include: { members: true } } }
-        });
+        const result = await prisma.$transaction(async (tx) => {
+            const invitation = await tx.invitation.findUnique({
+                where: { token },
+                include: { wallet: { include: { members: true } } },
+            });
 
-        if (!invitation || invitation.status !== "PENDING") {
-            return res.status(400).json({ error: "Invalid or expired invitation" });
-        }
-
-        if (invitation.wallet.members.length >= 5) {
-            return res.status(400).json({ error: "Wallet is full" });
-        }
-
-        const alreadyMember = invitation.wallet.members.some(m => m.user_id === userId);
-        if (alreadyMember) {
-            await prisma.invitation.delete({ where: { id: invitation.id } });
-            return res.json({ message: "You are already a member" });
-        }
-
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        const walletCount = await prisma.walletMember.count({
-            where: { user_id: userId }
-        });
-
-        const limit = user.premium_active ? 10 : 2;
-        if (walletCount >= limit) {
-            return res.status(403).json({ error: `User limit reached. You can only have/join ${limit} wallets.` });
-        }
-
-        await prisma.walletMember.create({
-            data: {
-                user_id: userId,
-                wallet_id: invitation.wallet_id,
-                role: "MEMBER"
+            if (!invitation || invitation.status !== "PENDING") {
+                throw new HttpError(400, "Invalid or expired invitation");
             }
+
+            const alreadyMember = invitation.wallet.members.some((m) => m.user_id === userId);
+            if (alreadyMember) {
+                await tx.invitation.delete({ where: { id: invitation.id } });
+                return { message: "You are already a member" };
+            }
+
+            if (invitation.wallet.members.length >= MAX_WALLET_MEMBERS) {
+                throw new HttpError(400, "Wallet is full");
+            }
+
+            const user = await tx.user.findUnique({ where: { id: userId } });
+            const walletCount = await tx.walletMember.count({ where: { user_id: userId } });
+
+            const limit = isPremiumActive(user) ? 10 : 2;
+            if (walletCount >= limit) {
+                throw new HttpError(403, `User limit reached. You can only have/join ${limit} wallets.`);
+            }
+
+            await tx.walletMember.create({
+                data: {
+                    user_id: userId,
+                    wallet_id: invitation.wallet_id,
+                    role: "MEMBER",
+                },
+            });
+
+            await tx.invitation.delete({ where: { id: invitation.id } });
+
+            return { message: "Joined wallet successfully" };
         });
 
-        await prisma.invitation.delete({ where: { id: invitation.id } });
-
-        res.json({ message: "Joined wallet successfully" });
-
+        res.json(result);
     } catch (error) {
+        if (error instanceof HttpError) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
         console.error("Error accepting invitation:", error);
         res.status(500).json({ error: "Internal server error" });
     }
@@ -334,7 +359,7 @@ const leaveWallet = async (req, res) => {
                     wallet_id: id,
                 },
             },
-            include: { wallet: true }
+            include: { wallet: true },
         });
 
         if (!walletMember) {
@@ -342,7 +367,6 @@ const leaveWallet = async (req, res) => {
         }
 
         if (walletMember.role === "OWNER") {
-            // Optional: Check if there are other members and force transfer or just allow generic error
             return res.status(403).json({ error: "Owner cannot leave wallet. Delete it or transfer ownership." });
         }
 
@@ -351,8 +375,8 @@ const leaveWallet = async (req, res) => {
                 user_id_wallet_id: {
                     user_id: userId,
                     wallet_id: id,
-                }
-            }
+                },
+            },
         });
 
         res.json({ message: "Left wallet successfully" });
@@ -360,7 +384,7 @@ const leaveWallet = async (req, res) => {
         console.error("Error leaving wallet:", error);
         res.status(500).json({ error: "Internal server error" });
     }
-}
+};
 
 module.exports = {
     createWallet,
@@ -370,5 +394,5 @@ module.exports = {
     deleteWallet,
     inviteUser,
     acceptInvitation,
-    leaveWallet
+    leaveWallet,
 };
