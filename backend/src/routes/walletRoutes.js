@@ -1,5 +1,6 @@
 const express = require("express");
 const { authenticate } = require("../middleware/authMiddleware");
+const { generalLimiter } = require("../middleware/rateLimiter");
 const {
     createWallet,
     getMyWallets,
@@ -12,6 +13,8 @@ const {
 } = require("../controllers/walletController");
 
 const router = express.Router();
+
+router.use(generalLimiter);
 
 router.post("/", authenticate, createWallet);
 router.get("/", authenticate, getMyWallets);

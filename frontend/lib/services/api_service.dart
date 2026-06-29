@@ -121,7 +121,7 @@ class ApiService {
     return _handleResponse(response);
   }
 
-  static Future<Map<String, dynamic>> inviteUser(String token, int walletId, String email) async {
+  static Future<Map<String, dynamic>> inviteUser(String token, String walletId, String email) async {
     final response = await http.post(
       Uri.parse('$walletUrl/$walletId/invite'),
       headers: {
@@ -153,6 +153,15 @@ class ApiService {
       body: jsonEncode({'email': email, 'code': code}),
     );
      return _handleResponse(response);
+  }
+
+  static Future<Map<String, dynamic>> resendVerification(String email) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/resend-verification'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+    return _handleResponse(response);
   }
 
   static Future<Map<String, dynamic>> refreshToken(String refreshToken) async {

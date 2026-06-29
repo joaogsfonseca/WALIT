@@ -1,41 +1,29 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { PrismaClient } = require("@prisma/client");
+const prisma = require("../lib/prisma");
 const { sendResetEmail, sendVerificationEmail } = require("../services/emailService");
 
-const prisma = new PrismaClient();
+// Validação mínima de password.
+const isPasswordValid = (password) => typeof password === "string" && password.length >= 8;
 
-// Helper: Generate and Save Refresh Token
-const generateRefreshToken = async (userId, ipAddress) => {
-    // Generate random token
-    const token = crypto.randomBytes(40).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+// Gera um código de verificação de 6 dígitos com gerador criptográfico.
+const generateVerificationCode = () => crypto.randomInt(100000, 1000000).toString();
 
-    // Hash the token before storing (optional if you want extra security, but plain is OK for now if DB is secure)
-    // For simplicity, we store the token as is or a simple hash. Let's store as is for now to match the "token" field.
-    // If you want to hash it: const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    // Using simple storage for logic clarity
+// Hash de tokens guardados na BD (refresh / reset).
+const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
-    // In schema we named it "token_hash", implying we should hash it or at least treat it as the stored secret.
-    // Let's store the token directly in "token_hash" for simplicity or actually hash it.
-    // Recommended: Return User the "token", store "hash(token)" in DB.
-
-    // Implementation:
-    // 1. Token = random string
-    // 2. Hash = SHA256(token)
-    // 3. Store Hash
-    // 4. Return Token to user
-
-    // Currently Schema has `token_hash`. So let's hash.
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+// Helper: gerar e guardar refresh token (guardamos apenas o hash).
+const generateRefreshToken = async (userId) => {
+    const token = crypto.randomBytes(40).toString("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
 
     await prisma.refreshToken.create({
         data: {
             user_id: userId,
-            token_hash: tokenHash,
+            token_hash: hashToken(token),
             expires_at: expiresAt,
-        }
+        },
     });
 
     return token;
@@ -49,6 +37,10 @@ const register = async (req, res) => {
             return res.status(400).json({ error: "Email e password são obrigatórios" });
         }
 
+        if (!isPasswordValid(password)) {
+            return res.status(400).json({ error: "A password deve ter pelo menos 8 caracteres" });
+        }
+
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
             return res.status(400).json({ error: "Email já está em uso" });
@@ -56,8 +48,7 @@ const register = async (req, res) => {
 
         const passwordHash = await bcrypt.hash(password, 10);
 
-        // Generate Verification Code
-        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits starting with non-zero
+        const verificationCode = generateVerificationCode();
         const codeExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
 
         await prisma.$transaction(async (tx) => {
@@ -77,10 +68,10 @@ const register = async (req, res) => {
                     user_id: user.id,
                 },
             });
-
-            // Send Email
-            await sendVerificationEmail(email, verificationCode);
         });
+
+        // Enviar email fora da transação para não a manter aberta durante I/O de rede.
+        await sendVerificationEmail(email, verificationCode);
 
         res.status(201).json({ message: "Conta criada. Verifique o seu email." });
     } catch (error) {
@@ -101,11 +92,11 @@ const verifyEmail = async (req, res) => {
 
         if (user.email_verified) return res.status(400).json({ error: "Email já verificado" });
 
-        if (user.verification_code !== code) {
+        if (!user.verification_code || user.verification_code !== code) {
             return res.status(400).json({ error: "Código inválido" });
         }
 
-        if (new Date() > user.verification_code_expires) {
+        if (!user.verification_code_expires || new Date() > user.verification_code_expires) {
             return res.status(400).json({ error: "Código expirado" });
         }
 
@@ -116,7 +107,7 @@ const verifyEmail = async (req, res) => {
                 email_verified: true,
                 verification_code: null,
                 verification_code_expires: null,
-            }
+            },
         });
 
         // Issue Tokens
@@ -129,18 +120,53 @@ const verifyEmail = async (req, res) => {
             message: "Email verificado com sucesso",
             token: jwtToken,
             refreshToken,
-            user: { id: user.id, name: user.name, email: user.email }
+            user: { id: user.id, name: user.name, email: user.email },
         });
-
     } catch (error) {
         console.error("Verify error:", error);
         res.status(500).json({ error: "Erro na verificação" });
     }
 };
 
+const resendVerification = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: "Email é obrigatório" });
+
+        const user = await prisma.user.findUnique({ where: { email } });
+
+        // Resposta genérica para não permitir enumeração de utilizadores.
+        if (!user || user.email_verified) {
+            return res.json({ message: "Se a conta existir e não estiver verificada, foi enviado um novo código." });
+        }
+
+        const verificationCode = generateVerificationCode();
+        const codeExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                verification_code: verificationCode,
+                verification_code_expires: codeExpires,
+            },
+        });
+
+        await sendVerificationEmail(email, verificationCode);
+
+        res.json({ message: "Se a conta existir e não estiver verificada, foi enviado um novo código." });
+    } catch (error) {
+        console.error("Resend verification error:", error);
+        res.status(500).json({ error: "Erro interno do servidor" });
+    }
+};
+
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ error: "Email e password são obrigatórios" });
+        }
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) {
@@ -167,7 +193,7 @@ const login = async (req, res) => {
         res.json({
             token: jwtToken,
             refreshToken,
-            user: { id: user.id, name: user.name, email: user.email }
+            user: { id: user.id, name: user.name, email: user.email },
         });
     } catch (error) {
         console.error("Erro no login:", error);
@@ -182,23 +208,25 @@ const refreshToken = async (req, res) => {
             return res.status(400).json({ error: "Refresh Token is required" });
         }
 
-        const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+        const tokenHash = hashToken(refreshToken);
 
         // Find token in DB
         const savedToken = await prisma.refreshToken.findUnique({
             where: { token_hash: tokenHash },
-            include: { user: true }
+            include: { user: true },
         });
 
         if (!savedToken) {
-            // Token not found (maybe reused/revoked? Could be security threat)
-            // If we implemented reuse detection, we would invalidate all user tokens here.
             return res.status(401).json({ error: "Invalid refresh token" });
         }
 
         if (savedToken.revoked) {
-            // Reuse detected!
-            // Consider revoking all tokens for this user family
+            // Reuse detectado: um token já revogado foi reutilizado.
+            // Por segurança, revogamos toda a família de tokens deste utilizador.
+            await prisma.refreshToken.updateMany({
+                where: { user_id: savedToken.user_id, revoked: false },
+                data: { revoked: true },
+            });
             return res.status(401).json({ error: "Token revoked" });
         }
 
@@ -206,27 +234,33 @@ const refreshToken = async (req, res) => {
             return res.status(401).json({ error: "Token expired" });
         }
 
-        // Token is valid. Rotate it.
-        // 1. Revoke old token
-        await prisma.refreshToken.update({
-            where: { id: savedToken.id },
-            data: { revoked: true }
-        });
+        // Token válido. Rodar: revogar o antigo e emitir novos.
+        const newRefreshTokenValue = crypto.randomBytes(40).toString("hex");
+        const newRefreshHash = hashToken(newRefreshTokenValue);
 
-        // 2. Generate new Access Token
+        await prisma.$transaction([
+            prisma.refreshToken.update({
+                where: { id: savedToken.id },
+                data: { revoked: true, replaced_by_token: newRefreshHash },
+            }),
+            prisma.refreshToken.create({
+                data: {
+                    user_id: savedToken.user_id,
+                    token_hash: newRefreshHash,
+                    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                },
+            }),
+        ]);
+
         const newJwtToken = jwt.sign({ userId: savedToken.user_id }, process.env.JWT_SECRET, {
             expiresIn: "15m",
         });
 
-        // 3. Generate new Refresh Token
-        const newRefreshToken = await generateRefreshToken(savedToken.user_id);
-
         res.json({
             token: newJwtToken,
-            refreshToken: newRefreshToken,
-            user: { id: savedToken.user.id, name: savedToken.user.name, email: savedToken.user.email }
+            refreshToken: newRefreshTokenValue,
+            user: { id: savedToken.user.id, name: savedToken.user.name, email: savedToken.user.email },
         });
-
     } catch (error) {
         console.error("Error refreshing token:", error);
         res.status(500).json({ error: "Internal error" });
@@ -236,13 +270,11 @@ const refreshToken = async (req, res) => {
 const logout = async (req, res) => {
     try {
         const { refreshToken } = req.body;
-        // Even if no refreshToken provided, we just say OK.
-        // But if provided, we revoke it.
         if (refreshToken) {
-            const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+            const tokenHash = hashToken(refreshToken);
             await prisma.refreshToken.updateMany({
                 where: { token_hash: tokenHash },
-                data: { revoked: true }
+                data: { revoked: true },
             });
         }
         res.json({ message: "Logout success" });
@@ -253,30 +285,31 @@ const logout = async (req, res) => {
 };
 
 const forgotPassword = async (req, res) => {
+    // Resposta genérica em todos os casos para evitar enumeração de utilizadores.
+    const genericResponse = { message: "Se existir uma conta com esse email, foi enviado um link de recuperação." };
     try {
         const { email } = req.body;
+        if (!email) return res.status(400).json({ error: "Email é obrigatório" });
+
         const user = await prisma.user.findUnique({ where: { email } });
 
-        if (!user) {
-            // Por segurança, não dizer se o email existe ou não, mas aqui simplifico por agora.
-            return res.status(404).json({ error: "Utilizador não encontrado" });
+        if (user) {
+            // Geramos o token, enviamos o original por email e guardamos apenas o hash.
+            const rawToken = crypto.randomBytes(32).toString("hex");
+            const expires = new Date(Date.now() + 3600000); // 1 hora
+
+            await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    reset_token: hashToken(rawToken),
+                    reset_token_expires: expires,
+                },
+            });
+
+            await sendResetEmail(email, rawToken);
         }
 
-        // Criar token aleatório
-        const token = crypto.randomBytes(20).toString("hex");
-        const expires = new Date(Date.now() + 3600000); // 1 hora
-
-        await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                reset_token: token,
-                reset_token_expires: expires,
-            },
-        });
-
-        await sendResetEmail(email, token);
-
-        res.json({ message: "Email de recuperação enviado" });
+        res.json(genericResponse);
     } catch (error) {
         console.error("Erro no forgotPassword:", error);
         res.status(500).json({ error: "Erro interno" });
@@ -287,9 +320,17 @@ const resetPassword = async (req, res) => {
     try {
         const { token, newPassword } = req.body;
 
+        if (!token || !newPassword) {
+            return res.status(400).json({ error: "Token e nova password são obrigatórios" });
+        }
+
+        if (!isPasswordValid(newPassword)) {
+            return res.status(400).json({ error: "A password deve ter pelo menos 8 caracteres" });
+        }
+
         const user = await prisma.user.findFirst({
             where: {
-                reset_token: token,
+                reset_token: hashToken(token),
                 reset_token_expires: { gt: new Date() }, // Expiração > Agora
             },
         });
@@ -300,14 +341,21 @@ const resetPassword = async (req, res) => {
 
         const passwordHash = await bcrypt.hash(newPassword, 10);
 
-        await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                password_hash: passwordHash,
-                reset_token: null,
-                reset_token_expires: null,
-            },
-        });
+        await prisma.$transaction([
+            prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    password_hash: passwordHash,
+                    reset_token: null,
+                    reset_token_expires: null,
+                },
+            }),
+            // Revogar todas as sessões ativas após mudança de password.
+            prisma.refreshToken.updateMany({
+                where: { user_id: user.id, revoked: false },
+                data: { revoked: true },
+            }),
+        ]);
 
         res.json({ message: "Password alterada com sucesso" });
     } catch (error) {
@@ -316,4 +364,4 @@ const resetPassword = async (req, res) => {
     }
 };
 
-module.exports = { register, login, refreshToken, logout, forgotPassword, resetPassword, verifyEmail };
+module.exports = { register, login, refreshToken, logout, forgotPassword, resetPassword, verifyEmail, resendVerification };
