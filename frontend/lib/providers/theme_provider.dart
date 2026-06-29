@@ -16,7 +16,6 @@ class ThemeProvider with ChangeNotifier {
   AppThemeType get currentTheme => _currentTheme;
   bool get isLoading => _isLoading;
 
-      case AppThemeType.argon:
   // No gradient themes — kept for the global background wrapper in main.dart.
   LinearGradient? get backgroundGradient => null;
 
